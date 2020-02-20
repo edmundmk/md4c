@@ -376,7 +376,7 @@ render_open_wikilink_span(MD_RENDER_HTML* r, const MD_SPAN_WIKILINK_DETAIL* det)
  **************************************/
 
 static int
-enter_block_callback(MD_BLOCKTYPE type, void* detail, void* userdata)
+enter_block_callback(MD_OFFSET pos, MD_BLOCKTYPE type, void* detail, void* userdata)
 {
     static const MD_CHAR* head[6] = { "<h1>", "<h2>", "<h3>", "<h4>", "<h5>", "<h6>" };
     MD_RENDER_HTML* r = (MD_RENDER_HTML*) userdata;
@@ -404,7 +404,7 @@ enter_block_callback(MD_BLOCKTYPE type, void* detail, void* userdata)
 }
 
 static int
-leave_block_callback(MD_BLOCKTYPE type, void* detail, void* userdata)
+leave_block_callback(MD_OFFSET pos, MD_BLOCKTYPE type, void* detail, void* userdata)
 {
     static const MD_CHAR* head[6] = { "</h1>\n", "</h2>\n", "</h3>\n", "</h4>\n", "</h5>\n", "</h6>\n" };
     MD_RENDER_HTML* r = (MD_RENDER_HTML*) userdata;
@@ -432,7 +432,7 @@ leave_block_callback(MD_BLOCKTYPE type, void* detail, void* userdata)
 }
 
 static int
-enter_span_callback(MD_SPANTYPE type, void* detail, void* userdata)
+enter_span_callback(MD_OFFSET pos, MD_SPANTYPE type, void* detail, void* userdata)
 {
     MD_RENDER_HTML* r = (MD_RENDER_HTML*) userdata;
 
@@ -472,7 +472,7 @@ enter_span_callback(MD_SPANTYPE type, void* detail, void* userdata)
 }
 
 static int
-leave_span_callback(MD_SPANTYPE type, void* detail, void* userdata)
+leave_span_callback(MD_OFFSET pos, MD_SPANTYPE type, void* detail, void* userdata)
 {
     MD_RENDER_HTML* r = (MD_RENDER_HTML*) userdata;
 
@@ -501,7 +501,7 @@ leave_span_callback(MD_SPANTYPE type, void* detail, void* userdata)
 }
 
 static int
-text_callback(MD_TEXTTYPE type, const MD_CHAR* text, MD_SIZE size, void* userdata)
+text_callback(MD_OFFSET pos, MD_TEXTTYPE type, const MD_CHAR* text, MD_SIZE size, void* userdata)
 {
     MD_RENDER_HTML* r = (MD_RENDER_HTML*) userdata;
 

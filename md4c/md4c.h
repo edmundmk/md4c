@@ -342,13 +342,13 @@ typedef struct MD_PARSER {
      *
      * Callbacks may abort further parsing of the document by returning non-zero.
      */
-    int (*enter_block)(MD_BLOCKTYPE /*type*/, void* /*detail*/, void* /*userdata*/);
-    int (*leave_block)(MD_BLOCKTYPE /*type*/, void* /*detail*/, void* /*userdata*/);
+    int (*enter_block)(MD_OFFSET /*pos*/, MD_BLOCKTYPE /*type*/, void* /*detail*/, void* /*userdata*/);
+    int (*leave_block)(MD_OFFSET /*pos*/, MD_BLOCKTYPE /*type*/, void* /*detail*/, void* /*userdata*/);
 
-    int (*enter_span)(MD_SPANTYPE /*type*/, void* /*detail*/, void* /*userdata*/);
-    int (*leave_span)(MD_SPANTYPE /*type*/, void* /*detail*/, void* /*userdata*/);
+    int (*enter_span)(MD_OFFSET /*pos*/, MD_SPANTYPE /*type*/, void* /*detail*/, void* /*userdata*/);
+    int (*leave_span)(MD_OFFSET /*pos*/, MD_SPANTYPE /*type*/, void* /*detail*/, void* /*userdata*/);
 
-    int (*text)(MD_TEXTTYPE /*type*/, const MD_CHAR* /*text*/, MD_SIZE /*size*/, void* /*userdata*/);
+    int (*text)(MD_OFFSET /*pos*/, MD_TEXTTYPE /*type*/, const MD_CHAR* /*text*/, MD_SIZE /*size*/, void* /*userdata*/);
 
     /* Debug callback. Optional (may be NULL).
      *

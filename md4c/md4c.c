@@ -345,7 +345,7 @@ md_ascii_eq(const CHAR* s1, const CHAR* s2, SZ n)
 }
 
 static int
-md_text_with_null_replacement(MD_CTX* ctx, MD_TEXTTYPE type, const CHAR* str, SZ size)
+md_text_with_null_replacement(MD_CTX* ctx, OFF pos, MD_TEXTTYPE type, const CHAR* str, SZ size)
 {
     OFF off = 0;
     int ret = 0;
@@ -355,22 +355,24 @@ md_text_with_null_replacement(MD_CTX* ctx, MD_TEXTTYPE type, const CHAR* str, SZ
             off++;
 
         if(off > 0) {
-            ret = ctx->parser.text(type, str, off, ctx->userdata);
+            ret = ctx->parser.text(pos, type, str, off, ctx->userdata);
             if(ret != 0)
                 return ret;
 
+            pos += off;
             str += off;
             size -= off;
             off = 0;
         }
 
-        if(off >= size)
+        if(size <= 0)
             return 0;
 
-        ret = ctx->parser.text(MD_TEXT_NULLCHAR, _T(""), 1, ctx->userdata);
+        ret = ctx->parser.text(pos, MD_TEXT_NULLCHAR, _T(""), 1, ctx->userdata);
         if(ret != 0)
             return ret;
-        off++;
+        pos++;
+        str++;
     }
 }
 
@@ -402,46 +404,46 @@ md_text_with_null_replacement(MD_CTX* ctx, MD_TEXTTYPE type, const CHAR* str, SZ
     } while(0)
 
 
-#define MD_ENTER_BLOCK(type, arg)                                           \
+#define MD_ENTER_BLOCK(pos, type, arg)                                      \
     do {                                                                    \
-        ret = ctx->parser.enter_block((type), (arg), ctx->userdata);        \
+        ret = ctx->parser.enter_block((pos), (type), (arg), ctx->userdata); \
         if(ret != 0) {                                                      \
             MD_LOG("Aborted from enter_block() callback.");                 \
             goto abort;                                                     \
         }                                                                   \
     } while(0)
 
-#define MD_LEAVE_BLOCK(type, arg)                                           \
+#define MD_LEAVE_BLOCK(pos, type, arg)                                      \
     do {                                                                    \
-        ret = ctx->parser.leave_block((type), (arg), ctx->userdata);        \
+        ret = ctx->parser.leave_block((pos), (type), (arg), ctx->userdata); \
         if(ret != 0) {                                                      \
             MD_LOG("Aborted from leave_block() callback.");                 \
             goto abort;                                                     \
         }                                                                   \
     } while(0)
 
-#define MD_ENTER_SPAN(type, arg)                                            \
+#define MD_ENTER_SPAN(pos, type, arg)                                       \
     do {                                                                    \
-        ret = ctx->parser.enter_span((type), (arg), ctx->userdata);         \
+        ret = ctx->parser.enter_span((pos), (type), (arg), ctx->userdata);  \
         if(ret != 0) {                                                      \
             MD_LOG("Aborted from enter_span() callback.");                  \
             goto abort;                                                     \
         }                                                                   \
     } while(0)
 
-#define MD_LEAVE_SPAN(type, arg)                                            \
+#define MD_LEAVE_SPAN(pos, type, arg)                                       \
     do {                                                                    \
-        ret = ctx->parser.leave_span((type), (arg), ctx->userdata);         \
+        ret = ctx->parser.leave_span((pos), (type), (arg), ctx->userdata);  \
         if(ret != 0) {                                                      \
             MD_LOG("Aborted from leave_span() callback.");                  \
             goto abort;                                                     \
         }                                                                   \
     } while(0)
 
-#define MD_TEXT(type, str, size)                                            \
+#define MD_TEXT(pos, type, str, size)                                       \
     do {                                                                    \
         if(size > 0) {                                                      \
-            ret = ctx->parser.text((type), (str), (size), ctx->userdata);   \
+            ret = ctx->parser.text((pos), (type), (str), (size), ctx->userdata); \
             if(ret != 0) {                                                  \
                 MD_LOG("Aborted from text() callback.");                    \
                 goto abort;                                                 \
@@ -449,10 +451,10 @@ md_text_with_null_replacement(MD_CTX* ctx, MD_TEXTTYPE type, const CHAR* str, SZ
         }                                                                   \
     } while(0)
 
-#define MD_TEXT_INSECURE(type, str, size)                                   \
+#define MD_TEXT_INSECURE(pos, type, str, size)                              \
     do {                                                                    \
         if(size > 0) {                                                      \
-            ret = md_text_with_null_replacement(ctx, type, str, size);      \
+            ret = md_text_with_null_replacement(ctx, pos, type, str, size); \
             if(ret != 0) {                                                  \
                 MD_LOG("Aborted from text() callback.");                    \
                 goto abort;                                                 \
@@ -4020,7 +4022,7 @@ md_analyze_link_contents(MD_CTX* ctx, const MD_LINE* lines, int n_lines,
 }
 
 static int
-md_enter_leave_span_a(MD_CTX* ctx, int enter, MD_SPANTYPE type,
+md_enter_leave_span_a(MD_CTX* ctx, int enter, OFF pos, MD_SPANTYPE type,
                       const CHAR* dest, SZ dest_size, int prohibit_escapes_in_dest,
                       const CHAR* title, SZ title_size)
 {
@@ -4038,9 +4040,9 @@ md_enter_leave_span_a(MD_CTX* ctx, int enter, MD_SPANTYPE type,
     MD_CHECK(md_build_attribute(ctx, title, title_size, 0, &det.title, &title_build));
 
     if(enter)
-        MD_ENTER_SPAN(type, &det);
+        MD_ENTER_SPAN(pos, type, &det);
     else
-        MD_LEAVE_SPAN(type, &det);
+        MD_LEAVE_SPAN(pos, type, &det);
 
 abort:
     md_free_attribute(ctx, &href_build);
@@ -4049,7 +4051,7 @@ abort:
 }
 
 static int
-md_enter_leave_span_wikilink(MD_CTX* ctx, int enter, const CHAR* target, SZ target_size)
+md_enter_leave_span_wikilink(MD_CTX* ctx, int enter, OFF pos, const CHAR* target, SZ target_size)
 {
     MD_ATTRIBUTE_BUILD target_build = { 0 };
     MD_SPAN_WIKILINK_DETAIL det;
@@ -4059,9 +4061,9 @@ md_enter_leave_span_wikilink(MD_CTX* ctx, int enter, const CHAR* target, SZ targ
     MD_CHECK(md_build_attribute(ctx, target, target_size, 0, &det.target, &target_build));
 
     if (enter)
-        MD_ENTER_SPAN(MD_SPAN_WIKILINK, &det);
+        MD_ENTER_SPAN(pos, MD_SPAN_WIKILINK, &det);
     else
-        MD_LEAVE_SPAN(MD_SPAN_WIKILINK, &det);
+        MD_LEAVE_SPAN(pos, MD_SPAN_WIKILINK, &det);
 
 abort:
     md_free_attribute(ctx, &target_build);
@@ -4096,7 +4098,7 @@ md_process_inlines(MD_CTX* ctx, const MD_LINE* lines, int n_lines)
         /* Process the text up to the next mark or end-of-line. */
         OFF tmp = (line->end < mark->beg ? line->end : mark->beg);
         if(tmp > off) {
-            MD_TEXT(text_type, STR(off), tmp - off);
+            MD_TEXT(off, text_type, STR(off), tmp - off);
             off = tmp;
         }
 
@@ -4107,19 +4109,19 @@ md_process_inlines(MD_CTX* ctx, const MD_LINE* lines, int n_lines)
                     if(ISNEWLINE(mark->beg+1))
                         enforce_hardbreak = 1;
                     else
-                        MD_TEXT(text_type, STR(mark->beg+1), 1);
+                        MD_TEXT(mark->beg, text_type, STR(mark->beg+1), 1);
                     break;
 
                 case ' ':       /* Non-trivial space. */
-                    MD_TEXT(text_type, _T(" "), 1);
+                    MD_TEXT(off, text_type, _T(" "), 1);
                     break;
 
                 case '`':       /* Code span. */
                     if(mark->flags & MD_MARK_OPENER) {
-                        MD_ENTER_SPAN(MD_SPAN_CODE, NULL);
+                        MD_ENTER_SPAN(mark->beg, MD_SPAN_CODE, NULL);
                         text_type = MD_TEXT_CODE;
                     } else {
-                        MD_LEAVE_SPAN(MD_SPAN_CODE, NULL);
+                        MD_LEAVE_SPAN(mark->beg, MD_SPAN_CODE, NULL);
                         text_type = MD_TEXT_NORMAL;
                     }
                     break;
@@ -4128,12 +4130,12 @@ md_process_inlines(MD_CTX* ctx, const MD_LINE* lines, int n_lines)
                     if(ctx->parser.flags & MD_FLAG_UNDERLINE) {
                         if(mark->flags & MD_MARK_OPENER) {
                             while(off < mark->end) {
-                                MD_ENTER_SPAN(MD_SPAN_U, NULL);
+                                MD_ENTER_SPAN(off, MD_SPAN_U, NULL);
                                 off++;
                             }
                         } else {
                             while(off < mark->end) {
-                                MD_LEAVE_SPAN(MD_SPAN_U, NULL);
+                                MD_LEAVE_SPAN(off, MD_SPAN_U, NULL);
                                 off++;
                             }
                         }
@@ -4144,20 +4146,20 @@ md_process_inlines(MD_CTX* ctx, const MD_LINE* lines, int n_lines)
                 case '*':       /* Emphasis, strong emphasis. */
                     if(mark->flags & MD_MARK_OPENER) {
                         if((mark->end - off) % 2) {
-                            MD_ENTER_SPAN(MD_SPAN_EM, NULL);
+                            MD_ENTER_SPAN(off, MD_SPAN_EM, NULL);
                             off++;
                         }
                         while(off + 1 < mark->end) {
-                            MD_ENTER_SPAN(MD_SPAN_STRONG, NULL);
+                            MD_ENTER_SPAN(off, MD_SPAN_STRONG, NULL);
                             off += 2;
                         }
                     } else {
                         while(off + 1 < mark->end) {
-                            MD_LEAVE_SPAN(MD_SPAN_STRONG, NULL);
+                            MD_LEAVE_SPAN(off, MD_SPAN_STRONG, NULL);
                             off += 2;
                         }
                         if((mark->end - off) % 2) {
-                            MD_LEAVE_SPAN(MD_SPAN_EM, NULL);
+                            MD_LEAVE_SPAN(off, MD_SPAN_EM, NULL);
                             off++;
                         }
                     }
@@ -4165,17 +4167,17 @@ md_process_inlines(MD_CTX* ctx, const MD_LINE* lines, int n_lines)
 
                 case '~':
                     if(mark->flags & MD_MARK_OPENER)
-                        MD_ENTER_SPAN(MD_SPAN_DEL, NULL);
+                        MD_ENTER_SPAN(mark->beg, MD_SPAN_DEL, NULL);
                     else
-                        MD_LEAVE_SPAN(MD_SPAN_DEL, NULL);
+                        MD_LEAVE_SPAN(mark->beg, MD_SPAN_DEL, NULL);
                     break;
 
                 case '$':
                     if(mark->flags & MD_MARK_OPENER) {
-                        MD_ENTER_SPAN((mark->end - off) % 2 ? MD_SPAN_LATEXMATH : MD_SPAN_LATEXMATH_DISPLAY, NULL);
+                        MD_ENTER_SPAN(off, (mark->end - off) % 2 ? MD_SPAN_LATEXMATH : MD_SPAN_LATEXMATH_DISPLAY, NULL);
                         text_type = MD_TEXT_LATEXMATH;
                     } else {
-                        MD_LEAVE_SPAN((mark->end - off) % 2 ? MD_SPAN_LATEXMATH : MD_SPAN_LATEXMATH_DISPLAY, NULL);
+                        MD_LEAVE_SPAN(off, (mark->end - off) % 2 ? MD_SPAN_LATEXMATH : MD_SPAN_LATEXMATH_DISPLAY, NULL);
                         text_type = MD_TEXT_NORMAL;
                     }
                     break;
@@ -4202,7 +4204,7 @@ md_process_inlines(MD_CTX* ctx, const MD_LINE* lines, int n_lines)
                             target_sz = closer->beg - opener->end;
 
                         MD_CHECK(md_enter_leave_span_wikilink(ctx, (mark->ch != ']'),
-                                 has_label ? STR(opener->beg+2) : STR(opener->end),
+                                 mark->beg, has_label ? STR(opener->beg+2) : STR(opener->end),
                                  target_sz));
 
                         break;
@@ -4214,7 +4216,7 @@ md_process_inlines(MD_CTX* ctx, const MD_LINE* lines, int n_lines)
                     MD_ASSERT(title_mark->ch == 'D');
 
                     MD_CHECK(md_enter_leave_span_a(ctx, (mark->ch != ']'),
-                                (opener->ch == '!' ? MD_SPAN_IMG : MD_SPAN_A),
+                                mark->beg, (opener->ch == '!' ? MD_SPAN_IMG : MD_SPAN_A),
                                 STR(dest_mark->beg), dest_mark->end - dest_mark->beg, FALSE,
                                 md_mark_get_ptr(ctx, title_mark - ctx->marks), title_mark->prev));
 
@@ -4269,16 +4271,16 @@ md_process_inlines(MD_CTX* ctx, const MD_LINE* lines, int n_lines)
 
                     if(closer->flags & MD_MARK_VALIDPERMISSIVEAUTOLINK)
                         MD_CHECK(md_enter_leave_span_a(ctx, (mark->flags & MD_MARK_OPENER),
-                                    MD_SPAN_A, dest, dest_size, TRUE, NULL, 0));
+                                    mark->beg, MD_SPAN_A, dest, dest_size, TRUE, NULL, 0));
                     break;
                 }
 
                 case '&':       /* Entity. */
-                    MD_TEXT(MD_TEXT_ENTITY, STR(mark->beg), mark->end - mark->beg);
+                    MD_TEXT(mark->beg, MD_TEXT_ENTITY, STR(mark->beg), mark->end - mark->beg);
                     break;
 
                 case '\0':
-                    MD_TEXT(MD_TEXT_NULLCHAR, _T(""), 1);
+                    MD_TEXT(mark->beg, MD_TEXT_NULLCHAR, _T(""), 1);
                     break;
 
                 case 127:
@@ -4313,11 +4315,11 @@ md_process_inlines(MD_CTX* ctx, const MD_LINE* lines, int n_lines)
                 while(off < ctx->size  &&  ISBLANK(off))
                     off++;
                 if(off > tmp)
-                    MD_TEXT(text_type, STR(tmp), off-tmp);
+                    MD_TEXT(off, text_type, STR(tmp), off-tmp);
 
                 /* and new lines are transformed into single spaces. */
                 if(prev_mark->end < off  &&  off < mark->beg)
-                    MD_TEXT(text_type, _T(" "), 1);
+                    MD_TEXT(off, text_type, _T(" "), 1);
             } else if(text_type == MD_TEXT_HTML) {
                 /* Inside raw HTML, we output the new line verbatim, including
                  * any trailing spaces. */
@@ -4326,8 +4328,8 @@ md_process_inlines(MD_CTX* ctx, const MD_LINE* lines, int n_lines)
                 while(tmp < end  &&  ISBLANK(tmp))
                     tmp++;
                 if(tmp > off)
-                    MD_TEXT(MD_TEXT_HTML, STR(off), tmp - off);
-                MD_TEXT(MD_TEXT_HTML, _T("\n"), 1);
+                    MD_TEXT(off, MD_TEXT_HTML, STR(off), tmp - off);
+                MD_TEXT(off, MD_TEXT_HTML, _T("\n"), 1);
             } else {
                 /* Output soft or hard line break. */
                 MD_TEXTTYPE break_type = MD_TEXT_SOFTBR;
@@ -4339,7 +4341,7 @@ md_process_inlines(MD_CTX* ctx, const MD_LINE* lines, int n_lines)
                         break_type = MD_TEXT_BR;
                 }
 
-                MD_TEXT(break_type, _T("\n"), 1);
+                MD_TEXT(off, break_type, _T("\n"), 1);
             }
 
             /* Move to the next line. */
@@ -4392,6 +4394,8 @@ md_process_table_cell(MD_CTX* ctx, MD_BLOCKTYPE cell_type, MD_ALIGN align, OFF b
 {
     MD_LINE line;
     MD_BLOCK_TD_DETAIL det;
+    OFF enter_pos = beg;
+    OFF leave_pos = end;
     int ret = 0;
 
     while(beg < end  &&  ISWHITESPACE(beg))
@@ -4403,9 +4407,9 @@ md_process_table_cell(MD_CTX* ctx, MD_BLOCKTYPE cell_type, MD_ALIGN align, OFF b
     line.beg = beg;
     line.end = end;
 
-    MD_ENTER_BLOCK(cell_type, &det);
+    MD_ENTER_BLOCK(enter_pos, cell_type, &det);
     MD_CHECK(md_process_normal_block_contents(ctx, &line, 1));
-    MD_LEAVE_BLOCK(cell_type, &det);
+    MD_LEAVE_BLOCK(leave_pos, cell_type, &det);
 
 abort:
     return ret;
@@ -4445,7 +4449,7 @@ md_process_table_row(MD_CTX* ctx, MD_BLOCKTYPE cell_type, OFF beg, OFF end,
     pipe_offs[j++] = end+1;
 
     /* Process cells. */
-    MD_ENTER_BLOCK(MD_BLOCK_TR, NULL);
+    MD_ENTER_BLOCK(beg, MD_BLOCK_TR, NULL);
     k = 0;
     for(i = 0; i < j-1  &&  k < col_count; i++) {
         if(pipe_offs[i] < pipe_offs[i+1]-1)
@@ -4455,7 +4459,7 @@ md_process_table_row(MD_CTX* ctx, MD_BLOCKTYPE cell_type, OFF beg, OFF end,
      * too few of them. */
     while(k < col_count)
         MD_CHECK(md_process_table_cell(ctx, cell_type, align[k++], 0, 0));
-    MD_LEAVE_BLOCK(MD_BLOCK_TR, NULL);
+    MD_LEAVE_BLOCK(end, MD_BLOCK_TR, NULL);
 
 abort:
     free(pipe_offs);
@@ -4489,17 +4493,17 @@ md_process_table_block_contents(MD_CTX* ctx, int col_count, const MD_LINE* lines
 
     md_analyze_table_alignment(ctx, lines[1].beg, lines[1].end, align, col_count);
 
-    MD_ENTER_BLOCK(MD_BLOCK_THEAD, NULL);
+    MD_ENTER_BLOCK(lines[0].beg, MD_BLOCK_THEAD, NULL);
     MD_CHECK(md_process_table_row(ctx, MD_BLOCK_TH,
                         lines[0].beg, lines[0].end, align, col_count));
-    MD_LEAVE_BLOCK(MD_BLOCK_THEAD, NULL);
+    MD_LEAVE_BLOCK(lines[0].end, MD_BLOCK_THEAD, NULL);
 
-    MD_ENTER_BLOCK(MD_BLOCK_TBODY, NULL);
+    MD_ENTER_BLOCK(lines[1].beg, MD_BLOCK_TBODY, NULL);
     for(i = 2; i < n_lines; i++) {
         MD_CHECK(md_process_table_row(ctx, MD_BLOCK_TD,
                         lines[i].beg, lines[i].end, align, col_count));
     }
-    MD_LEAVE_BLOCK(MD_BLOCK_TBODY, NULL);
+    MD_LEAVE_BLOCK(lines[n_lines-1].end,MD_BLOCK_TBODY, NULL);
 
 abort:
     free(align);
@@ -4533,6 +4537,11 @@ struct MD_BLOCK_tag {
      * MD_BLOCK_OL:     Start item number.
      */
     unsigned n_lines;
+
+    /*
+     * Offset.
+     */
+    OFF pos;
 };
 
 struct MD_CONTAINER_tag {
@@ -4544,6 +4553,7 @@ struct MD_CONTAINER_tag {
     unsigned contents_indent;
     OFF block_byte_off;
     OFF task_mark_off;
+    OFF pos;
 };
 
 
@@ -4583,17 +4593,17 @@ md_process_verbatim_block_contents(MD_CTX* ctx, MD_TEXTTYPE text_type, const MD_
 
         /* Output code indentation. */
         while(indent > (int) SIZEOF_ARRAY(indent_chunk_str)) {
-            MD_TEXT(text_type, indent_chunk_str, indent_chunk_size);
+            MD_TEXT(line->beg, text_type, indent_chunk_str, indent_chunk_size);
             indent -= SIZEOF_ARRAY(indent_chunk_str);
         }
         if(indent > 0)
-            MD_TEXT(text_type, indent_chunk_str, indent);
+            MD_TEXT(line->beg, text_type, indent_chunk_str, indent);
 
         /* Output the code line itself. */
-        MD_TEXT_INSECURE(text_type, STR(line->beg), line->end - line->beg);
+        MD_TEXT_INSECURE(line->beg, text_type, STR(line->beg), line->end - line->beg);
 
         /* Enforce end-of-line. */
-        MD_TEXT(text_type, _T("\n"), 1);
+        MD_TEXT(line->end, text_type, _T("\n"), 1);
     }
 
 abort:
@@ -4702,7 +4712,9 @@ md_process_leaf_block(MD_CTX* ctx, const MD_BLOCK* block)
     }
 
     if(!is_in_tight_list  ||  block->type != MD_BLOCK_P)
-        MD_ENTER_BLOCK(block->type, (void*) &det);
+    {
+        MD_ENTER_BLOCK(block->pos, block->type, (void*) &det);
+    }
 
     /* Process the block contents accordingly to is type. */
     switch(block->type) {
@@ -4732,7 +4744,17 @@ md_process_leaf_block(MD_CTX* ctx, const MD_BLOCK* block)
     }
 
     if(!is_in_tight_list  ||  block->type != MD_BLOCK_P)
-        MD_LEAVE_BLOCK(block->type, (void*) &det);
+    {
+        OFF pos = block->pos;
+        if (block->n_lines)
+        {
+            if (block->type == MD_BLOCK_CODE || block->type == MD_BLOCK_HTML)
+                pos = ( (const MD_VERBATIMLINE*)( block + 1 ) )[ block->n_lines - 1 ].end;
+            else
+                pos = ( (const MD_LINE*)( block + 1 ) )[ block->n_lines - 1 ].end;
+        }
+        MD_LEAVE_BLOCK(pos, block->type, (void*) &det);
+    }
 
 abort:
     if(clean_fence_code_detail) {
@@ -4787,14 +4809,14 @@ md_process_all_blocks(MD_CTX* ctx)
 
         if(block->flags & MD_BLOCK_CONTAINER) {
             if(block->flags & MD_BLOCK_CONTAINER_CLOSER) {
-                MD_LEAVE_BLOCK(block->type, &det);
+                MD_LEAVE_BLOCK(block->pos, block->type, &det);
 
                 if(block->type == MD_BLOCK_UL || block->type == MD_BLOCK_OL || block->type == MD_BLOCK_QUOTE)
                     ctx->n_containers--;
             }
 
             if(block->flags & MD_BLOCK_CONTAINER_OPENER) {
-                MD_ENTER_BLOCK(block->type, &det);
+                MD_ENTER_BLOCK(block->pos, block->type, &det);
 
                 if(block->type == MD_BLOCK_UL || block->type == MD_BLOCK_OL) {
                     ctx->containers[ctx->n_containers].is_loose = (block->flags & MD_BLOCK_LOOSE_LIST);
@@ -4906,6 +4928,7 @@ md_start_new_block(MD_CTX* ctx, const MD_LINE_ANALYSIS* line)
     block->flags = 0;
     block->data = line->data;
     block->n_lines = 0;
+    block->pos = line->beg;
 
     ctx->current_block = block;
     return 0;
@@ -5038,7 +5061,7 @@ md_add_line_into_current_block(MD_CTX* ctx, const MD_LINE_ANALYSIS* analysis)
 
 static int
 md_push_container_bytes(MD_CTX* ctx, MD_BLOCKTYPE type, unsigned start,
-                        unsigned data, unsigned flags)
+                        unsigned data, unsigned flags, OFF pos)
 {
     MD_BLOCK* block;
     int ret = 0;
@@ -5053,6 +5076,7 @@ md_push_container_bytes(MD_CTX* ctx, MD_BLOCKTYPE type, unsigned start,
     block->flags = flags;
     block->data = data;
     block->n_lines = start;
+    block->pos = pos;
 
 abort:
     return ret;
@@ -5519,15 +5543,15 @@ md_enter_child_containers(MD_CTX* ctx, int n_children, unsigned data)
 
                 MD_CHECK(md_push_container_bytes(ctx,
                                 (is_ordered_list ? MD_BLOCK_OL : MD_BLOCK_UL),
-                                c->start, data, MD_BLOCK_CONTAINER_OPENER));
+                                c->start, data, MD_BLOCK_CONTAINER_OPENER, c->pos));
                 MD_CHECK(md_push_container_bytes(ctx, MD_BLOCK_LI,
                                 c->task_mark_off,
                                 (c->is_task ? CH(c->task_mark_off) : 0),
-                                MD_BLOCK_CONTAINER_OPENER));
+                                MD_BLOCK_CONTAINER_OPENER, c->pos));
                 break;
 
             case _T('>'):
-                MD_CHECK(md_push_container_bytes(ctx, MD_BLOCK_QUOTE, 0, 0, MD_BLOCK_CONTAINER_OPENER));
+                MD_CHECK(md_push_container_bytes(ctx, MD_BLOCK_QUOTE, 0, 0, MD_BLOCK_CONTAINER_OPENER, c->pos));
                 break;
 
             default:
@@ -5560,15 +5584,15 @@ md_leave_child_containers(MD_CTX* ctx, int n_keep)
             case _T('*'):
                 MD_CHECK(md_push_container_bytes(ctx, MD_BLOCK_LI,
                                 c->task_mark_off, (c->is_task ? CH(c->task_mark_off) : 0),
-                                MD_BLOCK_CONTAINER_CLOSER));
+                                MD_BLOCK_CONTAINER_CLOSER, c->pos));
                 MD_CHECK(md_push_container_bytes(ctx,
                                 (is_ordered_list ? MD_BLOCK_OL : MD_BLOCK_UL), 0,
-                                c->ch, MD_BLOCK_CONTAINER_CLOSER));
+                                c->ch, MD_BLOCK_CONTAINER_CLOSER, c->pos));
                 break;
 
             case _T('>'):
                 MD_CHECK(md_push_container_bytes(ctx, MD_BLOCK_QUOTE, 0,
-                                0, MD_BLOCK_CONTAINER_CLOSER));
+                                0, MD_BLOCK_CONTAINER_CLOSER, c->pos));
                 break;
 
             default:
@@ -5673,6 +5697,7 @@ md_analyze_line(MD_CTX* ctx, OFF beg, OFF* p_end,
     MD_CONTAINER container = { 0 };
     int prev_line_has_list_loosening_effect = ctx->last_line_has_list_loosening_effect;
     OFF off = beg;
+    OFF brother_pos = 0;
     OFF hr_killer = 0;
     int ret = 0;
 
@@ -5698,6 +5723,7 @@ md_analyze_line(MD_CTX* ctx, OFF beg, OFF* p_end,
             if(line->indent > 0)
                 line->indent--;
 
+            container.pos = line->beg;
             line->beg = off;
 
         } else if(c->ch != _T('>')  &&  line->indent >= c->contents_indent) {
@@ -5865,6 +5891,7 @@ md_analyze_line(MD_CTX* ctx, OFF beg, OFF* p_end,
                 total_indent += container.contents_indent - container.mark_indent;
                 line->indent = md_line_indentation(ctx, total_indent, off, &off);
                 total_indent += line->indent;
+                brother_pos = line->beg;
                 line->beg = off;
 
                 /* Some of the following whitespace actually still belongs to the mark. */
@@ -6113,11 +6140,11 @@ md_analyze_line(MD_CTX* ctx, OFF beg, OFF* p_end,
         MD_CHECK(md_push_container_bytes(ctx, MD_BLOCK_LI,
                     ctx->containers[n_parents].task_mark_off,
                     (ctx->containers[n_parents].is_task ? CH(ctx->containers[n_parents].task_mark_off) : 0),
-                    MD_BLOCK_CONTAINER_CLOSER));
+                    MD_BLOCK_CONTAINER_CLOSER, brother_pos));
         MD_CHECK(md_push_container_bytes(ctx, MD_BLOCK_LI,
                     container.task_mark_off,
                     (container.is_task ? CH(container.task_mark_off) : 0),
-                    MD_BLOCK_CONTAINER_OPENER));
+                    MD_BLOCK_CONTAINER_OPENER, brother_pos));
         ctx->containers[n_parents].is_task = container.is_task;
         ctx->containers[n_parents].task_mark_off = container.task_mark_off;
     }
@@ -6211,7 +6238,7 @@ md_process_doc(MD_CTX *ctx)
     OFF off = 0;
     int ret = 0;
 
-    MD_ENTER_BLOCK(MD_BLOCK_DOC, NULL);
+    MD_ENTER_BLOCK(off, MD_BLOCK_DOC, NULL);
 
     while(off < ctx->size) {
         if(line == pivot_line)
@@ -6229,7 +6256,7 @@ md_process_doc(MD_CTX *ctx)
     MD_CHECK(md_leave_child_containers(ctx, 0));
     MD_CHECK(md_process_all_blocks(ctx));
 
-    MD_LEAVE_BLOCK(MD_BLOCK_DOC, NULL);
+    MD_LEAVE_BLOCK(off, MD_BLOCK_DOC, NULL);
 
 abort:
 
