@@ -1,4 +1,8 @@
-project( 'md4c', 'c', version : '0.4.2' )
+project( 'md4c', 'c', version : '0.4.3' )
+
+if meson.get_compiler( 'c' ).has_argument( '-Wno-missing-braces' )
+    add_project_arguments( '-Wno-missing-braces', language : 'c' )
+endif
 
 version = meson.project_version().split( '.' )
 defines = [
