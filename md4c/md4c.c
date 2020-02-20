@@ -35,11 +35,14 @@
  ***  Miscellaneous Stuff  ***
  *****************************/
 
-#ifdef _MSC_VER
-    /* MSVC does not understand "inline" when building as pure C (not C++).
-     * However it understands "__inline" */
-    #ifndef __cplusplus
+#if !defined(__STDC_VERSION__) || __STDC_VERSION__ < 199409L
+    /* C89/90 or old compilers in general may not understand "inline". */
+    #if defined __GNUC__
+        #define inline __inline__
+    #elif defined _MSC_VER
         #define inline __inline
+    #else
+        #define inline
     #endif
 #endif
 
@@ -211,14 +214,12 @@ struct MD_LINE_ANALYSIS_tag {
     OFF beg;
     OFF end;
     unsigned indent;        /* Indentation level. */
-    unsigned total_indent;  /* Total indent in characters. */
 };
 
 typedef struct MD_LINE_tag MD_LINE;
 struct MD_LINE_tag {
     OFF beg;
     OFF end;
-    unsigned total_indent;  /* Total indent in characters. */
 };
 
 typedef struct MD_VERBATIMLINE_tag MD_VERBATIMLINE;
@@ -1339,8 +1340,9 @@ md_build_attr_append_substr(MD_CTX* ctx, MD_ATTRIBUTE_BUILD* build,
         MD_TEXTTYPE* new_substr_types;
         OFF* new_substr_offsets;
 
-        build->substr_alloc = (build->substr_alloc == 0 ? 8 : build->substr_alloc * 2);
-
+        build->substr_alloc = (build->substr_alloc > 0
+                ? build->substr_alloc + build->substr_alloc / 2
+                : 8);
         new_substr_types = (MD_TEXTTYPE*) realloc(build->substr_types,
                                     build->substr_alloc * sizeof(MD_TEXTTYPE));
         if(new_substr_types == NULL) {
@@ -1466,8 +1468,8 @@ abort:
  ***  Dictionary of Reference Definitions  ***
  *********************************************/
 
-#define MD_FNV1A_BASE       2166136261
-#define MD_FNV1A_PRIME      16777619
+#define MD_FNV1A_BASE       2166136261U
+#define MD_FNV1A_PRIME      16777619U
 
 static inline unsigned
 md_fnv1a(unsigned base, const void* data, size_t n)
@@ -1717,14 +1719,15 @@ md_build_ref_def_hashtable(MD_CTX* ctx)
          * is sorted. */
         list = (MD_REF_DEF_LIST*) bucket;
         if(list->n_ref_defs >= list->alloc_ref_defs) {
+            int alloc_ref_defs = list->alloc_ref_defs + list->alloc_ref_defs / 2;
             MD_REF_DEF_LIST* list_tmp = (MD_REF_DEF_LIST*) realloc(list,
-                        sizeof(MD_REF_DEF_LIST) + 2 * list->alloc_ref_defs * sizeof(MD_REF_DEF*));
+                        sizeof(MD_REF_DEF_LIST) + alloc_ref_defs * sizeof(MD_REF_DEF*));
             if(list_tmp == NULL) {
                 MD_LOG("realloc() failed.");
                 goto abort;
             }
             list = list_tmp;
-            list->alloc_ref_defs *= 2;
+            list->alloc_ref_defs = alloc_ref_defs;
             ctx->ref_def_hashtable[def->hash % ctx->ref_def_hashtable_size] = list;
         }
 
@@ -1836,6 +1839,7 @@ struct MD_LINK_ATTR_tag {
 
     CHAR* title;
     SZ title_size;
+    int title_needs_free;
 };
 
 
@@ -2148,7 +2152,9 @@ md_is_link_reference_definition(MD_CTX* ctx, const MD_LINE* lines, int n_lines)
     if(ctx->n_ref_defs >= ctx->alloc_ref_defs) {
         MD_REF_DEF* new_defs;
 
-        ctx->alloc_ref_defs = (ctx->alloc_ref_defs > 0 ? ctx->alloc_ref_defs * 2 : 16);
+        ctx->alloc_ref_defs = (ctx->alloc_ref_defs > 0
+                ? ctx->alloc_ref_defs + ctx->alloc_ref_defs / 2
+                : 16);
         new_defs = (MD_REF_DEF*) realloc(ctx->ref_defs, ctx->alloc_ref_defs * sizeof(MD_REF_DEF));
         if(new_defs == NULL) {
             MD_LOG("realloc() failed.");
@@ -2232,6 +2238,7 @@ md_is_link_reference(MD_CTX* ctx, const MD_LINE* lines, int n_lines,
         attr->dest_end = def->dest_end;
         attr->title = def->title;
         attr->title_size = def->title_size;
+        attr->title_needs_free = FALSE;
     }
 
     if(!IS_INPUT_STR(label))
@@ -2278,6 +2285,7 @@ md_is_inline_link_spec(MD_CTX* ctx, const MD_LINE* lines, int n_lines,
         attr->dest_end = off;
         attr->title = NULL;
         attr->title_size = 0;
+        attr->title_needs_free = FALSE;
         off++;
         *p_end = off;
         return TRUE;
@@ -2320,13 +2328,16 @@ md_is_inline_link_spec(MD_CTX* ctx, const MD_LINE* lines, int n_lines,
     if(title_contents_beg >= title_contents_end) {
         attr->title = NULL;
         attr->title_size = 0;
+        attr->title_needs_free = FALSE;
     } else if(!title_is_multiline) {
         attr->title = (CHAR*) STR(title_contents_beg);
         attr->title_size = title_contents_end - title_contents_beg;
+        attr->title_needs_free = FALSE;
     } else {
         MD_CHECK(md_merge_lines_alloc(ctx, title_contents_beg, title_contents_end,
                     lines + title_contents_line_index, n_lines - title_contents_line_index,
                     _T('\n'), &attr->title, &attr->title_size));
+        attr->title_needs_free = TRUE;
     }
 
     *p_end = off;
@@ -2488,7 +2499,9 @@ md_push_mark(MD_CTX* ctx)
     if(ctx->n_marks >= ctx->alloc_marks) {
         MD_MARK* new_marks;
 
-        ctx->alloc_marks = (ctx->alloc_marks > 0 ? ctx->alloc_marks * 2 : 64);
+        ctx->alloc_marks = (ctx->alloc_marks > 0
+                ? ctx->alloc_marks + ctx->alloc_marks / 2
+                : 64);
         new_marks = realloc(ctx->marks, ctx->alloc_marks * sizeof(MD_MARK));
         if(new_marks == NULL) {
             MD_LOG("realloc() failed.");
@@ -2531,6 +2544,7 @@ md_mark_chain_append(MD_CTX* ctx, MD_MARKCHAIN* chain, int mark_index)
         chain->head = mark_index;
 
     ctx->marks[mark_index].prev = chain->tail;
+    ctx->marks[mark_index].next = -1;
     chain->tail = mark_index;
 }
 
@@ -2622,7 +2636,7 @@ md_rollback(MD_CTX* ctx, int opener_index, int closer_index, int how)
             chain->head = -1;
     }
 
-    /* Go backwards so that un-resolved openers are re-added into their
+    /* Go backwards so that unresolved openers are re-added into their
      * respective chains, in the right order. */
     mark_index = closer_index - 1;
     while(mark_index > opener_index) {
@@ -3413,91 +3427,90 @@ md_resolve_links(MD_CTX* ctx, const MD_LINE* lines, int n_lines)
             continue;
         }
 
-        /* Detect and resolve wiki links. */
+        /* Recognize and resolve wiki links.
+         * Wiki-links maybe '[[destination]]' or '[[destination|label]]'.
+         */
         if ((ctx->parser.flags & MD_FLAG_WIKILINKS) &&
-            next_opener != NULL && next_closer != NULL &&
-            (opener->end - opener->beg == 1) &&
+            (opener->end - opener->beg == 1) &&         /* not image */
+            next_opener != NULL &&                      /* double '[' opener */
+            next_opener->ch == '[' &&
             (next_opener->beg == opener->beg - 1) &&
-            (next_closer->beg == closer->beg + 1) &&
             (next_opener->end - next_opener->beg == 1) &&
-            (next_closer->end - next_closer->beg == 1) &&
-            (next_opener->ch == '[' && next_closer->ch == ']'))
+            next_closer != NULL &&                      /* double ']' closer */
+            next_closer->ch == ']' &&
+            (next_closer->beg == closer->beg + 1) &&
+            (next_closer->end - next_closer->beg == 1))
         {
+            MD_MARK* delim = NULL;
+            int delim_index;
+            OFF dest_beg, dest_end;
+
             is_link = TRUE;
 
-            if (opener->end == closer->beg)
-                is_link = FALSE;
-
-            int delim_index = opener_index;
-            MD_MARK* delim = &ctx->marks[delim_index];
-
-            /* To prevent runaway O(n^2) performance, don't look too far for the delimiter (.. < 100). */
-            while(is_link && delim_index < closer_index && (delim_index - opener_index) < 100 ) {
-                if(delim->ch == '|' && delim->beg == opener->end) {
-                    is_link = FALSE;
-                } else if(delim->ch == '|' && delim->end == closer->beg) {
-                    break;
-                } else if(delim->ch == '|') {
-                    opener->end = delim->beg;
+            /* We don't allow destination to be longer then 100 characters.
+             * Lets scan to see whether there is '|'. (If not then the whole
+             * wiki-link has to be below the 100 characters.) */
+            delim_index = opener_index + 1;
+            while(delim_index < closer_index) {
+                MD_MARK* m = &ctx->marks[delim_index];
+                if(m->ch == '|') {
+                    delim = m;
                     break;
                 }
+                if(m->ch != 'D'  &&  m->beg - opener->end > 100)
+                    break;
                 delim_index++;
-                delim = &ctx->marks[delim_index];
             }
-
-            OFF off = closer->beg-1;
-            int count = 0;
-            int has_label = (opener->end - opener->beg > 2);
-            const MD_LINE* line;
-            int line_index = n_lines-1;
-
-            /* An image inside the link target disables the wiki link. */
-            if( (has_label && last_img_beg >= opener->beg && last_img_end <= opener->end) ||
-                (!has_label && last_img_beg >= opener->beg && last_img_end <= closer->end))
+            dest_beg = opener->end;
+            dest_end = (delim != NULL) ? delim->beg : closer->beg;
+            if(dest_end - dest_beg == 0 || dest_end - dest_beg > 100)
                 is_link = FALSE;
 
-            while(is_link && off > opener->beg && count++ < 100) {
-
-                /* Newline not allowed in link target. */
-                if(has_label && (off <= opener->end) && ISNEWLINE(off))
-                    is_link = FALSE;
-                else if(!has_label && off > opener->end && ISNEWLINE(off))
-                    is_link = FALSE;
-                else if(ISNEWLINE(off)) {
-                    line = &lines[line_index--];
-                    count = count - line->total_indent - 1;  /* Count newline too. */
+            /* There may not be any new line in the destination. */
+            if(is_link) {
+                OFF off;
+                for(off = dest_beg; off < dest_end; off++) {
+                    if(ISNEWLINE(off)) {
+                        is_link = FALSE;
+                        break;
+                    }
                 }
-
-                off--;
             }
-
-            if(off > opener->beg)
-                is_link = FALSE;
 
             if(is_link) {
-                if(delim->ch == '|')
-                    delim->flags |= MD_MARK_RESOLVED;
+                if(delim != NULL) {
+                    if(delim->end < closer->beg) {
+                        opener->end = delim->beg;
+                    } else {
+                        /* The pipe is just before the closer: [[foo|]] */
+                        closer->beg = delim->beg;
+                        delim = NULL;
+                    }
+                }
 
                 opener->beg = next_opener->beg;
-                closer->end = next_closer->end;
-
                 opener->next = closer_index;
                 opener->flags |= MD_MARK_OPENER | MD_MARK_RESOLVED;
+
+                closer->end = next_closer->end;
                 closer->prev = opener_index;
                 closer->flags |= MD_MARK_CLOSER | MD_MARK_RESOLVED;
 
                 last_link_beg = opener->beg;
                 last_link_end = closer->end;
 
-                if ((opener->end - opener->beg > 2))
+                if(delim != NULL) {
+                    delim->flags |= MD_MARK_RESOLVED;
+                    md_rollback(ctx, opener_index, delim_index, MD_ROLLBACK_ALL);
                     md_analyze_link_contents(ctx, lines, n_lines, opener_index+1, closer_index);
+                } else {
+                    md_rollback(ctx, opener_index, closer_index, MD_ROLLBACK_ALL);
+                }
 
-                opener_index = next_index;
+                opener_index = next_opener->prev;
                 continue;
             }
-
         }
-
 
         if(next_opener != NULL  &&  next_opener->beg == closer->end) {
             if(next_closer->beg > closer->end + 1) {
@@ -3577,7 +3590,8 @@ md_resolve_links(MD_CTX* ctx, const MD_LINE* lines, int n_lines)
 
             MD_ASSERT(ctx->marks[opener_index+2].ch == 'D');
             md_mark_store_ptr(ctx, opener_index+2, attr.title);
-            if(!IS_INPUT_STR(attr.title))
+            /* The title might or might not have been allocated for us. */
+            if(attr.title_needs_free)
                 md_mark_chain_append(ctx, &PTR_CHAIN, opener_index+2);
             ctx->marks[opener_index+2].prev = attr.title_size;
 
@@ -3675,8 +3689,7 @@ md_analyze_emph(MD_CTX* ctx, int mark_index)
             int i, n_opener_chains;
             unsigned flags = mark->flags;
 
-            /* Apply "rule of three". (This is why we break asterisk opener
-             * marks into multiple chains.) */
+            /* Apply the "rule of three". */
             n_opener_chains = 0;
             opener_chains[n_opener_chains++] = &ASTERISK_OPENERS_intraword_mod3_0;
             if((flags & MD_MARK_EMPH_MOD3_MASK) != MD_MARK_EMPH_MOD3_2)
@@ -3712,7 +3725,7 @@ md_analyze_emph(MD_CTX* ctx, int mark_index)
         if(opener != NULL) {
             SZ opener_size = opener->end - opener->beg;
             SZ closer_size = mark->end - mark->beg;
-            MD_MARKCHAIN* opener_chain = md_mark_chain(ctx, mark_index);
+            MD_MARKCHAIN* opener_chain = md_mark_chain(ctx, opener_index);
 
             if(opener_size > closer_size) {
                 opener_index = md_split_emph_mark(ctx, opener_index, closer_size);
@@ -4173,19 +4186,18 @@ md_process_inlines(MD_CTX* ctx, const MD_LINE* lines, int n_lines)
                 {
                     const MD_MARK* opener = (mark->ch != ']' ? mark : &ctx->marks[mark->prev]);
                     const MD_MARK* closer = &ctx->marks[opener->next];
+                    const MD_MARK* dest_mark;
+                    const MD_MARK* title_mark;
 
                     if ((opener->ch == '[' && closer->ch == ']') &&
                         opener->end - opener->beg >= 2 &&
-                        closer->end - closer->beg == 2)
+                        closer->end - closer->beg >= 2)
                     {
-                        const MD_MARK* delim = opener+3;  /* Scan past the two dummy marks. */
                         int has_label = (opener->end - opener->beg > 2);
-                        int target_sz;
+                        SZ target_sz;
 
                         if(has_label)
                             target_sz = opener->end - (opener->beg+2);
-                        else if(delim->ch == '|')
-                            target_sz = (closer->beg-1) - opener->end;
                         else
                             target_sz = closer->beg - opener->end;
 
@@ -4196,10 +4208,9 @@ md_process_inlines(MD_CTX* ctx, const MD_LINE* lines, int n_lines)
                         break;
                     }
 
-                    const MD_MARK* dest_mark = opener+1;
-                    const MD_MARK* title_mark = opener+2;
-
+                    dest_mark = opener+1;
                     MD_ASSERT(dest_mark->ch == 'D');
+                    title_mark = opener+2;
                     MD_ASSERT(title_mark->ch == 'D');
 
                     MD_CHECK(md_enter_leave_span_a(ctx, (mark->ch != ']'),
@@ -4827,7 +4838,9 @@ md_push_block_bytes(MD_CTX* ctx, int n_bytes)
     if(ctx->n_block_bytes + n_bytes > ctx->alloc_block_bytes) {
         void* new_block_bytes;
 
-        ctx->alloc_block_bytes = (ctx->alloc_block_bytes > 0 ? ctx->alloc_block_bytes * 2 : 512);
+        ctx->alloc_block_bytes = (ctx->alloc_block_bytes > 0
+                ? ctx->alloc_block_bytes + ctx->alloc_block_bytes / 2
+                : 512);
         new_block_bytes = realloc(ctx->block_bytes, ctx->alloc_block_bytes);
         if(new_block_bytes == NULL) {
             MD_LOG("realloc() failed.");
@@ -5017,7 +5030,6 @@ md_add_line_into_current_block(MD_CTX* ctx, const MD_LINE_ANALYSIS* analysis)
 
         line->beg = analysis->beg;
         line->end = analysis->end;
-        line->total_indent = analysis->total_indent;
     }
     ctx->current_block->n_lines++;
 
@@ -5465,7 +5477,9 @@ md_push_container(MD_CTX* ctx, const MD_CONTAINER* container)
     if(ctx->n_containers >= ctx->alloc_containers) {
         MD_CONTAINER* new_containers;
 
-        ctx->alloc_containers = (ctx->alloc_containers > 0 ? ctx->alloc_containers * 2 : 16);
+        ctx->alloc_containers = (ctx->alloc_containers > 0
+                ? ctx->alloc_containers + ctx->alloc_containers / 2
+                : 16);
         new_containers = realloc(ctx->containers, ctx->alloc_containers * sizeof(MD_CONTAINER));
         if(new_containers == NULL) {
             MD_LOG("realloc() failed.");
@@ -6021,8 +6035,6 @@ md_analyze_line(MD_CTX* ctx, OFF beg, OFF* p_end,
 
         break;
     }
-
-    line->total_indent = total_indent;
 
     /* Scan for end of the line.
      *

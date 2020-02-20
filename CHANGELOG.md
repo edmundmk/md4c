@@ -2,7 +2,7 @@
 # MD4C Change Log
 
 
-## Next Version (Work in Progress)
+## Version 0.4.3
 
 New features:
 
@@ -11,6 +11,18 @@ New features:
    strong emphasis.
 
 Changes:
+
+ * The implementation of wiki-links extension (with `MD_FLAG_WIKILINKS`) has
+   been simplified.
+
+    - A noticeable increase of MD4C's memory footprint introduced by the
+      extension implementation in 0.4.0 has been removed.
+    - The priority handling towards other inline elements have been unified.
+      (This affects an obscure case where syntax of an image was in place of
+      wiki-link destination made the wiki-link invalid. Now *all* inline spans
+      in the wiki-link destination, including the images, is suppressed.)
+    - The length limitation of 100 characters now always applies to wiki-link
+      destination.
 
  * Recognition of strike-through spans (with the flag `MD_FLAG_STRIKETHROUGH`)
    has become much stricter and, arguably, reasonable.
@@ -47,6 +59,10 @@ Fixes:
  * [#100](https://github.com/mity/md4c/issues/100):
    Fixed an off-by-one error in the maximal length limit of some segments
    of e-mail addresses used in autolinks.
+
+ * [#107](https://github.com/mity/md4c/issues/107):
+   Fix mis-detection of asterisk-encoded emphasis in some corner cases when
+   length of the opener and closer differs, as in `***foo *bar baz***`.
 
 
 ## Version 0.4.2

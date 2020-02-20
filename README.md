@@ -1,4 +1,4 @@
-[![Linux Build Status (travis-ci.com)](https://img.shields.io/travis/mity/md4c/master.svg?logo=linux&label=linux%20build)](https://travis-ci.org/mity/md4c)
+[![Linux Build Status (travis-ci.com)](https://img.shields.io/travis/mity/md4c/master.svg?logo=linux&label=linux%20build)](https://travis-ci.com/mity/md4c)
 [![Windows Build Status (appveyor.com)](https://img.shields.io/appveyor/ci/mity/md4c/master.svg?logo=windows&label=windows%20build)](https://ci.appveyor.com/project/mity/md4c/branch/master)
 [![Code Coverage Status (codecov.io)](https://img.shields.io/codecov/c/github/mity/md4c/master.svg?logo=codecov&label=code%20coverage)](https://codecov.io/github/mity/md4c)
 [![Coverity Scan Status](https://img.shields.io/coverity/scan/mity-md4c.svg?label=coverity%20scan)](https://scan.coverity.com/projects/mity-md4c)
@@ -27,7 +27,7 @@ The following resources can explain more if you are unfamiliar with it:
 MD4C is C Markdown parser with the following features:
 
 * **Compliance:** Generally MD4C aims to be compliant to the latest version of
-  [CommonMark specification](http://spec.commonmark.org/). Right now we are
+  [CommonMark specification](http://spec.commonmark.org/). Currently, we are
   fully compliant to CommonMark 0.29.
 
 * **Extensions:** MD4C supports some commonly requested and accepted extensions.
@@ -39,16 +39,18 @@ MD4C is C Markdown parser with the following features:
 * **Embedding:** MD4C is easy to reuse in other projects, its API is very
   straightforward: There is actually just one function, `md_parse()`.
 
-* **Push model:** MD4C parses the complete document and calls callback
-  functions provided by the application for each start/end of block, start/end
-  of a span, and with any textual contents.
+* **Push model:** MD4C parses the complete document and calls few callback
+  functions provided by the application to inform it about a start/end of
+  every block, a start/end of every span, and with any textual contents.
 
-* **Portability:** MD4C builds and works on Windows and POSIX-compliant systems,
-  and it should be fairly simple to make it run also on most other systems.
+* **Portability:** MD4C builds and works on Windows and POSIX-compliant OSes.
+  (It should be simple to make it run also on most other platforms, at least as
+  long as the platform provides C standard library, including a heap memory
+  management.)
 
 * **Encoding:** MD4C can be compiled to recognize ASCII-only control characters,
-  UTF-8 and, on Windows, also UTF-16, i.e. what is on Windows commonly called
-  just "Unicode". See more details below.
+  UTF-8 and, on Windows, also UTF-16 (i.e. what is on Windows commonly called
+  just "Unicode"). See more details below.
 
 * **Permissive license:** MD4C is available under the MIT license.
 
@@ -61,16 +63,16 @@ Application has to include the header `md4c.h` and link against MD4C library;
 or alternatively it may include `md4c.h` and `md4c.c` directly into its source
 base as the parser is only implemented in the single C source file.
 
-The main provided function is `md_parse()`. It takes a text in Markdown syntax
-as an input and a pointer to a structure which holds pointers to several
-callback functions.
+The main provided function is `md_parse()`. It takes a text in the Markdown
+syntax and a pointer to a structure which provides pointers to several callback
+functions.
 
-As `md_parse()` processes the input, and it calls the appropriate callbacks
-(when entering or leaving any Markdown block or span; and when outputting any
-textual content of the document), allowing application to convert it into
-another format or render it onto the screen.
+As `md_parse()` processes the input, it calls the callbacks (when entering or
+leaving any Markdown block or span; and when outputting any textual content of
+the document), allowing application to convert it into another format or render
+it onto the screen.
 
-Example implementation of simple renderer is available in the `md2html`
+An example implementation of simple renderer is available in the `md2html`
 directory which implements a conversion utility from Markdown to HTML.
 
 
@@ -199,8 +201,8 @@ details may be little-bit outdated.
 parser. Nothing more and nothing less.
 
 That said, there is a complete HTML generator built on top of the parser in the
-directory `md2html` (the files `render_html.[hc]` and `md2html/entity.[hc]`).
-At this time, you have to directly reuse that code in your project.
+directory `md2html` (the files `render_html.[hc]` and `entity.[hc]`). At this
+time, you have to directly reuse that code in your project.
 
 There is [some discussion](https://github.com/mity/md4c/issues/82) whether this
 should be changed (and how) in the future.
@@ -268,11 +270,21 @@ Ports and bindings to other languages:
 
 * [commonmark-d](https://github.com/AuburnSounds/commonmark-d):
   Port of MD4C to D language.
+
 * [markdown-wasm](https://github.com/rsms/markdown-wasm):
   Markdown parser and HTML generator for WebAssembly, based on MD4C.
 
 Software using MD4C:
 
-* [Qt toolkit](https://www.qt.io/)
-* [Textosaurus](https://github.com/martinrotter/textosaurus)
-* [8th](https://8th-dev.com/)
+* [QOwnNotes](https://www.qownnotes.org/):
+  A plain-text file notepad and todo-list manager with markdown support and
+  ownCloud / Nextcloud integration.
+
+* [Qt](https://www.qt.io/):
+  Cross-platform C++ GUI framework.
+
+* [Textosaurus](https://github.com/martinrotter/textosaurus):
+  Cross-platform text editor based on Qt and Scintilla.
+
+* [8th](https://8th-dev.com/):
+  Cross-platform concatenative programming language.
